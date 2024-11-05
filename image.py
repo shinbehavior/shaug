@@ -231,10 +231,30 @@ class AugmentationTool:
         aug_frame = ttk.Frame(self.folder_frame)
         aug_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
         
-        ttk.Label(aug_frame, text="Augmentations per image:").grid(row=0, column=0, padx=5)
+        # Left side - Number of augmentations
+        aug_num_frame = ttk.Frame(aug_frame)
+        aug_num_frame.grid(row=0, column=0, sticky=(tk.W))
+        
+        ttk.Label(aug_num_frame, text="Augmentations per image:").grid(row=0, column=0, padx=5)
         self.num_aug_var = tk.StringVar(value="5")
-        self.num_aug_entry = ttk.Entry(aug_frame, textvariable=self.num_aug_var, width=10)
+        self.num_aug_entry = ttk.Entry(aug_num_frame, textvariable=self.num_aug_var, width=10)
         self.num_aug_entry.grid(row=0, column=1, padx=5)
+        
+        # Right side - Random mode checkbox
+        aug_mode_frame = ttk.Frame(aug_frame)
+        aug_mode_frame.grid(row=0, column=1, sticky=(tk.E))
+        
+        self.random_aug_var = tk.BooleanVar(value=False)
+        self.random_aug_check = ttk.Checkbutton(
+            aug_mode_frame, 
+            text="Random augs per one copy of image", 
+            variable=self.random_aug_var
+        )
+        self.random_aug_check.grid(row=0, column=0, padx=5)
+
+        # Configure the frame weights to spread components
+        aug_frame.columnconfigure(0, weight=1)
+        aug_frame.columnconfigure(1, weight=1)
         
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.folder_frame, variable=self.progress_var, maximum=100)
@@ -395,7 +415,7 @@ class AugmentationTool:
                     ))
                 
                 elif param_name == "blur":
-                    value = int(param_data['range_var'].get()) // 2 * 2 + 1  # ensure odd
+                    value = int(param_data['range_var'].get()) // 2 * 2 + 1
                     transforms.append(A.Blur(blur_limit=value, p=prob))
                 
                 elif param_name == "gaussian_noise":
@@ -406,7 +426,7 @@ class AugmentationTool:
                     ))
                 
                 elif param_name == "motion_blur":
-                    value = int(param_data['range_var'].get()) // 2 * 2 + 1  # ensure odd
+                    value = int(param_data['range_var'].get()) // 2 * 2 + 1
                     transforms.append(A.MotionBlur(
                         blur_limit=value,
                         p=prob
@@ -446,20 +466,46 @@ class AugmentationTool:
                     
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 
-                for i in range(num_aug):
-                    # Apply transforms
-                    augmented = transform(image=image)
-                    augmented_image = augmented['image']
-                    
-                    # Save augmented image
-                    output_filename = f"{os.path.splitext(filename)[0]}_aug_{i}{os.path.splitext(filename)[1]}"
-                    output_path = os.path.join(output_folder, output_filename)
-                    cv2.imwrite(output_path, cv2.cvtColor(augmented_image, cv2.COLOR_RGB2BGR))
-                    
-                    # Update progress
-                    completed_operations += 1
-                    self.progress_var.set((completed_operations / total_operations) * 100)
-                    self.root.update_idletasks()
+                if self.random_aug_var.get():
+                    # Random mode: each image gets random combination of augmentations
+                    transform_list = transforms.copy()
+                    for i in range(num_aug):
+                        current_transforms = []
+                        for t in transform_list:
+                            if np.random.random() < t.p:
+                                current_transforms.append(t)
+                        
+                        if current_transforms:
+                            current_transform = A.Compose(current_transforms)
+                            augmented = current_transform(image=image)
+                            augmented_image = augmented['image']
+                        else:  # If no transforms were selected, use original image
+                            augmented_image = image
+                        
+                        # Save augmented image
+                        output_filename = f"{os.path.splitext(filename)[0]}_aug_{i}{os.path.splitext(filename)[1]}"
+                        output_path = os.path.join(output_folder, output_filename)
+                        cv2.imwrite(output_path, cv2.cvtColor(augmented_image, cv2.COLOR_RGB2BGR))
+                        
+                        # Update progress
+                        completed_operations += 1
+                        self.progress_var.set((completed_operations / total_operations) * 100)
+                        self.root.update_idletasks()
+                else:
+                    # Original mode: apply all transforms with their probabilities
+                    for i in range(num_aug):
+                        augmented = transform(image=image)
+                        augmented_image = augmented['image']
+                        
+                        # Save augmented image
+                        output_filename = f"{os.path.splitext(filename)[0]}_aug_{i}{os.path.splitext(filename)[1]}"
+                        output_path = os.path.join(output_folder, output_filename)
+                        cv2.imwrite(output_path, cv2.cvtColor(augmented_image, cv2.COLOR_RGB2BGR))
+                        
+                        # Update progress
+                        completed_operations += 1
+                        self.progress_var.set((completed_operations / total_operations) * 100)
+                        self.root.update_idletasks()
             
             tk.messagebox.showinfo("Success", "Batch augmentation completed successfully!")
             
@@ -468,7 +514,7 @@ class AugmentationTool:
         
         finally:
             self.progress_var.set(0)
-    
+            
     def delayed_update(self):
         """Schedule a delayed update"""
         if self.pending_update:
@@ -800,7 +846,6 @@ class AugmentationTool:
         if file_path:
             # Apply transforms to full-size image for saving
             transforms = []
-            # [Transform creation code same as update_preview]
             transform = A.Compose(transforms)
             
             try:
