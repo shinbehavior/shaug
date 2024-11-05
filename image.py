@@ -20,35 +20,6 @@ class AugmentationTool:
         self.last_update_time = 0
         self.update_delay = 100 #ms
         self.pending_update = None
-
-        # Create main frame with weight configuration
-        self.main_frame = ttk.Frame(self.root, padding="10")
-        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        
-        # Configure main frame weights
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.columnconfigure(1, weight=1)
-
-        # Create preview frames with equal width columns
-        self.preview_frame = ttk.Frame(self.main_frame)
-        self.preview_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
-        self.preview_frame.columnconfigure(0, weight=1)
-        self.preview_frame.columnconfigure(1, weight=1)
-        
-        self.original_preview_frame = ttk.LabelFrame(self.preview_frame, text="Original Image")
-        self.original_preview_frame.grid(row=0, column=0, padx=5, sticky=(tk.W, tk.E))
-        self.original_label = ttk.Label(self.original_preview_frame)
-        self.original_label.pack(padx=5, pady=5)
-        
-        self.preview_preview_frame = ttk.LabelFrame(self.preview_frame, text="Augmented Image")
-        self.preview_preview_frame.grid(row=0, column=1, padx=5, sticky=(tk.W, tk.E))
-        self.preview_label = ttk.Label(self.preview_preview_frame)
-        self.preview_label.pack(padx=5, pady=5)
-        
-        self.load_btn = ttk.Button(self.main_frame, text="Load Image", command=self.load_image)
-        self.load_btn.grid(row=1, column=0, columnspan=2, pady=5)
         
         # Params
         self.params = {
@@ -173,7 +144,68 @@ class AugmentationTool:
             }
         }
 
+        # Create main frame with weight configuration
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        
+        # Configure main frame weights
+        self.main_frame.columnconfigure(0, weight=1)
+        self.main_frame.columnconfigure(1, weight=1)
+
+        # Create preview frames with equal width columns
+        self.preview_frame = ttk.Frame(self.main_frame)
+        self.preview_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
+        self.preview_frame.columnconfigure(0, weight=1)
+        self.preview_frame.columnconfigure(1, weight=1)
+        
+        self.original_preview_frame = ttk.LabelFrame(self.preview_frame, text="Original Image")
+        self.original_preview_frame.grid(row=0, column=0, padx=5, sticky=(tk.W, tk.E))
+        self.original_label = ttk.Label(self.original_preview_frame)
+        self.original_label.pack(padx=5, pady=5)
+        
+        self.preview_preview_frame = ttk.LabelFrame(self.preview_frame, text="Augmented Image")
+        self.preview_preview_frame.grid(row=0, column=1, padx=5, sticky=(tk.W, tk.E))
+        self.preview_label = ttk.Label(self.preview_preview_frame)
+        self.preview_label.pack(padx=5, pady=5)
+        
+        self.load_btn = ttk.Button(self.main_frame, text="Load Image", command=self.load_image)
+        self.load_btn.grid(row=1, column=0, columnspan=2, pady=5)
+        
+        self.canvas = tk.Canvas(self.main_frame)
+        self.scrollbar = ttk.Scrollbar(self.main_frame, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+        
+        # Configure the canvas
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        # Create window inside canvas
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        # Grid layout for canvas and scrollbar
+        self.canvas.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=5)
+        self.scrollbar.grid(row=2, column=2, sticky="ns")
+        
+        # Configure weights
+        self.main_frame.grid_rowconfigure(2, weight=1)
+        self.canvas.grid_configure(sticky="nsew")
+        
+        # Bind mouse wheel
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        # Create parameter controls inside scrollable frame
         self.create_parameter_controls()
+
+        # Set maximum height for canvas
+        self.canvas.update_idletasks()
+        canvas_height = min(400, self.scrollable_frame.winfo_reqheight())
+        self.canvas.configure(height=canvas_height)
 
         self.folder_frame = ttk.LabelFrame(self.main_frame, text="Batch Processing", padding="5")
         self.folder_frame.grid(row=3, column=0, columnspan=2, pady=10, sticky=(tk.W, tk.E))
@@ -237,7 +269,17 @@ class AugmentationTool:
         input_frame.columnconfigure(1, weight=1)
         output_frame.columnconfigure(1, weight=1)
         self.folder_frame.columnconfigure(0, weight=1)
-            
+        
+    def _on_mousewheel(self, event):
+        """Handle mousewheel scrolling"""
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def _on_canvas_configure(self, event):
+        """Handle canvas resize"""
+        width = event.width - 4
+        if width > 1:
+            self.canvas.itemconfig(1, width=width)
+                
     def select_input_folder(self):
         folder = filedialog.askdirectory(title="Select Input Folder")
         if folder:
@@ -434,12 +476,16 @@ class AugmentationTool:
         self.pending_update = self.root.after(self.update_delay, self.update_preview)
     
     def create_parameter_controls(self):
-        # Create frames for left and right columns
-        left_frame = ttk.Frame(self.main_frame)
-        right_frame = ttk.Frame(self.main_frame)
+        # Create frames for left and right columns inside scrollable frame
+        left_frame = ttk.Frame(self.scrollable_frame)
+        right_frame = ttk.Frame(self.scrollable_frame)
         
-        left_frame.grid(row=2, column=0, padx=5, sticky=(tk.W, tk.E, tk.N, tk.S))
-        right_frame.grid(row=2, column=1, padx=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        left_frame.grid(row=0, column=0, padx=5, sticky="nsew")
+        right_frame.grid(row=0, column=1, padx=5, sticky="nsew")
+        
+        # Configure column weights for scrollable frame
+        self.scrollable_frame.columnconfigure(0, weight=1)
+        self.scrollable_frame.columnconfigure(1, weight=1)
         
         # Divide parameters into two groups
         params_list = list(self.params.items())
@@ -447,28 +493,13 @@ class AugmentationTool:
         left_params = params_list[:mid_point]
         right_params = params_list[mid_point:]
         
-        # Create controls for left and right columns
+        # Create controls for both columns
         self.create_column_controls(left_frame, left_params)
         self.create_column_controls(right_frame, right_params)
-        
-        # Configure column weights
+
+        # Configure weights for frames
         left_frame.columnconfigure(0, weight=1)
         right_frame.columnconfigure(0, weight=1)
-        
-        # Move buttons to a new row below both columns
-        self.generate_btn = ttk.Button(
-            self.main_frame, 
-            text="Generate Code", 
-            command=self.generate_code
-        )
-        self.generate_btn.grid(row=3, column=0, columnspan=2, pady=10)
-
-        self.save_btn = ttk.Button(
-            self.main_frame,
-            text="Save Augmented Image",
-            command=self.save_augmented_image
-        )
-        self.save_btn.grid(row=4, column=0, columnspan=2, pady=5)
 
     def create_column_controls(self, parent, params):
         for row, (param_name, param_data) in enumerate(params):
