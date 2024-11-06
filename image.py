@@ -11,7 +11,7 @@ from functools import partial
 class AugmentationTool:
     def __init__(self, root):
         self.root = root
-        self.root.title("Live Image Augmentation Tool")
+        self.root.title("shaug: augmentation tool")
         
         # Store original image
         self.original_image = None
